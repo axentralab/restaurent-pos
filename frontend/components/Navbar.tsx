@@ -1,16 +1,16 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useAuth } from '@/lib/hooks';
+import { useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 
 const NAV_ITEMS = [
-  { href: '/',          label: 'Dashboard', icon: '◈', roles: ['admin','cashier','waiter','chef'] },
-  { href: '/pos',       label: 'POS',       icon: '⊞', roles: ['admin','cashier','waiter'] },
-  { href: '/kitchen',   label: 'Kitchen',   icon: '🍳', roles: ['admin','chef','waiter'] },
-  { href: '/orders',    label: 'Orders',    icon: '⊟', roles: ['admin','cashier','waiter'] },
-  { href: '/inventory', label: 'Inventory', icon: '⊡', roles: ['admin','cashier'] },
-  { href: '/reports',   label: 'Reports',   icon: '◉', roles: ['admin','cashier'] },
+  { href: '/',          label: 'Dashboard', icon: '◈' },
+  { href: '/pos',       label: 'POS',       icon: '⊞' },
+  { href: '/kitchen',   label: 'Kitchen',   icon: '🍳' },
+  { href: '/orders',    label: 'Orders',    icon: '⊟' },
+  { href: '/inventory', label: 'Inventory', icon: '⊡' },
+  { href: '/reports',   label: 'Reports',   icon: '◉' },
 ];
 
 const ROLE_COLORS: Record<string, string> = {
@@ -20,31 +20,41 @@ const ROLE_COLORS: Record<string, string> = {
   chef:    'bg-orange-600 text-white',
 };
 
+interface UserInfo { name: string; role: string; }
+
 export default function Navbar() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const [user, setUser] = useState<UserInfo | null>(null);
 
-  const visible = user
-    ? NAV_ITEMS.filter(i => i.roles.includes(user.role))
-    : NAV_ITEMS;
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('pos_token');
+      if (!token) return;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (payload?.name) setUser({ name: payload.name, role: payload.role });
+    } catch {}
+  }, []);
 
   const initials = user?.name
-    ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+    ? user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
     : '?';
+
+  const logout = () => {
+    localStorage.removeItem('pos_token');
+    document.cookie = 'pos_token=; path=/; max-age=0';
+    window.location.href = '/login';
+  };
 
   return (
     <nav className="fixed left-0 top-0 h-screen w-16 lg:w-56 bg-zinc-950 border-r border-zinc-800 flex flex-col z-50">
-      {/* Logo */}
       <div className="p-4 border-b border-zinc-800 flex items-center gap-3">
         <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-black font-black text-xs flex-shrink-0">
           POS
         </div>
         <span className="hidden lg:block text-white font-bold text-sm tracking-wide">foodashh</span>
       </div>
-
-      {/* Nav Links */}
       <div className="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto">
-        {visible.map((item) => {
+        {NAV_ITEMS.map((item) => {
           const active = pathname === item.href ||
             (item.href !== '/' && pathname.startsWith(item.href));
           return (
@@ -64,8 +74,6 @@ export default function Navbar() {
           );
         })}
       </div>
-
-      {/* User section */}
       <div className="p-2 border-t border-zinc-800">
         <div className="flex items-center gap-3 px-2 py-2">
           <div className={clsx(
