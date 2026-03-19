@@ -7,12 +7,7 @@
   --amber-light: #fbbf24;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
+* { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 
 body {
@@ -25,13 +20,11 @@ code, pre, .font-mono {
   font-family: var(--font-mono), ui-monospace, monospace;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: #52525b; }
 
-/* Animations */
 @keyframes count-up {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -43,3 +36,7 @@ code, pre, .font-mono {
   50%       { box-shadow: 0 0 0 6px rgba(245,158,11,0); }
 }
 .kot-pulse { animation: kot-pulse 1.5s ease-in-out infinite; }
+
+/* Hide scrollbar but keep scroll */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
