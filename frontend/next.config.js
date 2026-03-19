@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Temporarily skip type checking and linting during build
-  // Remove these after fixing all TypeScript errors locally
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -13,6 +11,10 @@ const nextConfig = {
     remotePatterns: [
       { protocol: 'https', hostname: '**' },
     ],
+  },
+  // Required for Next 15 + React 18 compatibility
+  experimental: {
+    reactCompiler: false,
   },
   async rewrites() {
     return [
