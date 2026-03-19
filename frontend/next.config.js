@@ -12,10 +12,6 @@ const nextConfig = {
       { protocol: 'https', hostname: '**' },
     ],
   },
-  // Required for Next 15 + React 18 compatibility
-  experimental: {
-    reactCompiler: false,
-  },
   async rewrites() {
     return [
       {

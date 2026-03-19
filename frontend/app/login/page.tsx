@@ -1,70 +1,96 @@
 'use client';
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { auth } from '@/lib/api';
 import { clsx } from 'clsx';
 
 const DEMO_ACCOUNTS = [
-  { role: 'Admin',   email: 'admin@pos.com',   password: 'admin123',   desc: 'Full access to all modules' },
-  { role: 'Cashier', email: 'cashier@pos.com', password: 'cashier123', desc: 'POS, orders, reports' },
-  { role: 'Waiter',  email: 'waiter@pos.com',  password: 'waiter123',  desc: 'POS and table orders' },
-  { role: 'Chef',    email: 'chef@pos.com',    password: 'chef123',    desc: 'Kitchen display only' },
+  { role: 'Admin',   email: 'admin@pos.com',   password: 'admin123',   desc: 'Full access' },
+  { role: 'Cashier', email: 'cashier@pos.com', password: 'cashier123', desc: 'POS + billing' },
+  { role: 'Waiter',  email: 'waiter@pos.com',  password: 'waiter123',  desc: 'Orders only'  },
+  { role: 'Chef',    email: 'chef@pos.com',    password: 'chef123',    desc: 'Kitchen only' },
 ];
 
-// Mock users — works even when backend is offline
-const MOCK_USERS: Record<string, { name: string; role: string; password: string }> = {
-  'admin@pos.com':   { name: 'Admin User',    role: 'admin',   password: 'admin123'   },
-  'cashier@pos.com': { name: 'Sarah Cashier', role: 'cashier', password: 'cashier123' },
-  'waiter@pos.com':  { name: 'Rahim Waiter',  role: 'waiter',  password: 'waiter123'  },
-  'chef@pos.com':    { name: 'Chef Karim',    role: 'chef',    password: 'chef123'    },
+// All valid users — no backend needed
+const USERS: Record<string, { name: string; role: string }> = {
+  'admin@pos.com':   { name: 'Admin User',    role: 'admin'   },
+  'cashier@pos.com': { name: 'Sarah Cashier', role: 'cashier' },
+  'waiter@pos.com':  { name: 'Rahim Waiter',  role: 'waiter'  },
+  'chef@pos.com':    { name: 'Chef Karim',    role: 'chef'    },
 };
 
-function mockToken(user: { name: string; role: string; email: string }) {
-  // Fake JWT-shaped token for demo — not cryptographically valid
+const PASSWORDS: Record<string, string> = {
+  'admin@pos.com':   'admin123',
+  'cashier@pos.com': 'cashier123',
+  'waiter@pos.com':  'waiter123',
+  'chef@pos.com':    'chef123',
+};
+
+function makeToken(email: string, name: string, role: string): string {
   const header  = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const payload = btoa(JSON.stringify({ id: crypto.randomUUID(), ...user, iat: Date.now() }));
-  return `${header}.${payload}.mock_signature`;
+  const payload = btoa(JSON.stringify({
+    id: Math.random().toString(36).slice(2),
+    email, name, role,
+    iat: Math.floor(Date.now() / 1000),
+  }));
+  return `${header}.${payload}.demo_signature`;
+}
+
+function saveSession(token: string) {
+  try { localStorage.setItem('pos_token', token); } catch {}
+  try { document.cookie = `pos_token=${token}; path=/; max-age=${7 * 24 * 3600}`; } catch {}
 }
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail]     = useState('admin@pos.com');
+  const [email, setEmail]       = useState('admin@pos.com');
   const [password, setPassword] = useState('admin123');
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
-
-  const saveSession = (token: string) => {
-    // Save in both localStorage (for API calls) and cookie (for middleware)
-    localStorage.setItem('pos_token', token);
-    document.cookie = `pos_token=${token}; path=/; max-age=${7 * 24 * 60 * 60}`;
-  };
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    // 1. Try real backend first
-    try {
-      const { token } = await auth.login(email, password);
-      saveSession(token);
-      router.push('/');
-      return;
-    } catch (_) {
-      // Backend offline — fall through to mock login
+    const em = email.trim().toLowerCase();
+
+    // ── Try real backend first (with short timeout) ──────────
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (apiUrl) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000); // 3s timeout
+        const res = await fetch(`${apiUrl}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: em, password }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (res.ok) {
+          const data = await res.json();
+          saveSession(data.token);
+          router.push('/');
+          return;
+        }
+      } catch {
+        // Backend unavailable — fall through to demo login
+      }
     }
 
-    // 2. Mock login fallback (demo / no backend)
-    const mock = MOCK_USERS[email.toLowerCase()];
-    if (mock && mock.password === password) {
-      const token = mockToken({ name: mock.name, role: mock.role, email });
+    // ── Demo / offline login ──────────────────────────────────
+    const user = USERS[em];
+    const correctPass = PASSWORDS[em];
+
+    if (user && correctPass === password) {
+      const token = makeToken(em, user.name, user.role);
       saveSession(token);
+      setLoading(false);
       router.push('/');
     } else {
       setError('Invalid email or password');
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const fillDemo = (acc: typeof DEMO_ACCOUNTS[0]) => {
@@ -74,102 +100,87 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex">
+    <div style={{ minHeight: '100vh', background: '#09090b', display: 'flex' }}>
       {/* Left branding */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 bg-zinc-900 border-r border-zinc-800 p-12">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center text-black font-black text-sm">
-            POS
+      <div style={{ flex: 1, background: '#18181b', borderRight: '1px solid #27272a', padding: '40px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+        className="hidden lg:flex">
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
+            <div style={{ width: 36, height: 36, background: '#f59e0b', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', fontWeight: 900, fontSize: 10 }}>POS</div>
+            <span style={{ fontSize: 18, fontWeight: 700, color: '#fafafa' }}>foodashh</span>
           </div>
-          <span className="text-white font-bold text-xl">foodashh</span>
-        </div>
-        <div className="space-y-6">
-          <h1 className="text-4xl font-black text-white leading-tight">
-            The POS that<br />
-            <span className="text-amber-400">works as hard</span><br />
-            as your kitchen.
-          </h1>
-          <p className="text-zinc-400 text-lg leading-relaxed">
-            Real-time orders. Live inventory. Multi-role access.
-            Built for restaurants in Bangladesh and beyond.
+          <div style={{ fontSize: 26, fontWeight: 900, color: '#fafafa', lineHeight: 1.3, marginBottom: 12 }}>
+            The POS that<br /><span style={{ color: '#f59e0b' }}>works as hard</span><br />as your kitchen.
+          </div>
+          <p style={{ color: '#71717a', fontSize: 13, lineHeight: 1.6 }}>
+            Real-time orders. Live inventory.<br />Multi-role access. Built for BD restaurants.
           </p>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { icon: '⚡', label: 'Real-time KOT' },
-              { icon: '📊', label: 'Live analytics' },
-              { icon: '📦', label: 'Auto inventory' },
-              { icon: '💳', label: 'bKash / Cash' },
-            ].map(({ icon, label }) => (
-              <div key={label} className="flex items-center gap-2 text-zinc-400 text-sm">
-                <span>{icon}</span><span>{label}</span>
-              </div>
-            ))}
-          </div>
         </div>
-        <p className="text-zinc-700 text-sm">© 2026 foodashh POS · Axentralab</p>
+        <p style={{ color: '#3f3f46', fontSize: 11 }}>© 2026 foodashh · Axentralab</p>
       </div>
 
-      {/* Right: form */}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-md space-y-6">
-          <div className="flex items-center gap-3 lg:hidden">
-            <div className="w-9 h-9 bg-amber-500 rounded-xl flex items-center justify-center text-black font-black text-xs">POS</div>
-            <span className="text-white font-bold text-lg">foodashh</span>
+      {/* Right form */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ width: '100%', maxWidth: 340 }}>
+
+          {/* Mobile logo */}
+          <div className="flex lg:hidden items-center gap-2 mb-6">
+            <div style={{ width: 32, height: 32, background: '#f59e0b', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', fontWeight: 900, fontSize: 9 }}>POS</div>
+            <span style={{ color: '#fafafa', fontWeight: 700, fontSize: 16 }}>foodashh</span>
           </div>
 
-          <div>
-            <h2 className="text-2xl font-black text-white">Sign in</h2>
-            <p className="text-zinc-500 text-sm mt-1">Enter your credentials to access the POS</p>
-          </div>
+          <div style={{ color: '#fafafa', fontSize: 20, fontWeight: 900, marginBottom: 3 }}>Sign in</div>
+          <div style={{ color: '#71717a', fontSize: 12, marginBottom: 20 }}>Pick a demo account or enter credentials</div>
 
-          {/* Demo switcher */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
-            <p className="text-zinc-500 text-xs uppercase tracking-widest font-semibold">Quick Demo Login</p>
-            <div className="grid grid-cols-2 gap-2">
+          {/* Demo buttons */}
+          <div style={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 10, padding: 12, marginBottom: 20 }}>
+            <p style={{ color: '#52525b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600, marginBottom: 8 }}>Demo accounts</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
               {DEMO_ACCOUNTS.map((acc) => (
                 <button
                   key={acc.role}
                   type="button"
                   onClick={() => fillDemo(acc)}
-                  className={clsx(
-                    'p-2.5 rounded-lg border text-left transition-all',
-                    email === acc.email
-                      ? 'border-amber-500/60 bg-amber-500/10 text-white'
-                      : 'border-zinc-800 hover:border-zinc-600 text-zinc-400 hover:text-white'
-                  )}
+                  style={{
+                    padding: '8px 10px',
+                    border: `1px solid ${email === acc.email ? 'rgba(245,158,11,.5)' : '#3f3f46'}`,
+                    borderRadius: 8,
+                    background: email === acc.email ? 'rgba(245,158,11,.08)' : 'transparent',
+                    color: email === acc.email ? '#fafafa' : '#a1a1aa',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all .12s',
+                  }}
                 >
-                  <p className="text-xs font-semibold">{acc.role}</p>
-                  <p className="text-[10px] opacity-60 mt-0.5">{acc.desc}</p>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>{acc.role}</div>
+                  <div style={{ fontSize: 10, opacity: 0.6, marginTop: 1 }}>{acc.desc}</div>
                 </button>
               ))}
             </div>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-zinc-400 text-xs mb-1.5 font-medium">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/60 transition-colors"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-zinc-400 text-xs mb-1.5 font-medium">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500/60 transition-colors"
-                required
-              />
-            </div>
+          <form onSubmit={handleSubmit}>
+            <label style={{ display: 'block', color: '#71717a', fontSize: 11, fontWeight: 500, marginBottom: 5 }}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              style={{ width: '100%', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 9, padding: '9px 12px', color: '#fafafa', fontSize: 13, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }}
+            />
+
+            <label style={{ display: 'block', color: '#71717a', fontSize: 11, fontWeight: 500, marginBottom: 5 }}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              style={{ width: '100%', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 9, padding: '9px 12px', color: '#fafafa', fontSize: 13, outline: 'none', marginBottom: 14, boxSizing: 'border-box' }}
+            />
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">
+              <div style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 8, padding: '8px 12px', color: '#f87171', fontSize: 12, marginBottom: 12 }}>
                 {error}
               </div>
             )}
@@ -177,14 +188,19 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-bold rounded-xl transition-all active:scale-95 text-sm"
+              style={{
+                width: '100%', padding: '11px', background: loading ? '#27272a' : '#f59e0b',
+                border: 'none', borderRadius: 10, color: loading ? '#71717a' : '#000',
+                fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'all .12s',
+              }}
             >
               {loading ? 'Signing in…' : 'Sign in →'}
             </button>
           </form>
 
-          <p className="text-zinc-700 text-xs text-center">
-            Works offline with demo accounts. Connect backend for real data.
+          <p style={{ color: '#3f3f46', fontSize: 11, textAlign: 'center', marginTop: 16 }}>
+            Works offline — no backend needed for demo
           </p>
         </div>
       </div>
