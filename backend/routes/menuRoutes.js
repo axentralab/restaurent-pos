@@ -4,8 +4,9 @@ const menuCtrl  = require('../controllers/menuController');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // Public read routes
-router.get('/categories', menuCtrl.getCategories);
 router.get('/',           menuCtrl.getMenu);
+router.get('/categories', menuCtrl.getCategories);
+
 router.get('/:id',        menuCtrl.getMenuItem);
 
 // Protected write routes
