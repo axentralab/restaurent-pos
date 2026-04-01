@@ -1,7 +1,7 @@
 const { query } = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 
-// ─── GET ALL MENU ITEMS ────────────────────────────────────────
+// ─── GET ALL MENU ITEMS (FIXED) ────────────────────────────────────────
 exports.getMenu = async (req, res) => {
   try {
     const { category_id, featured, search, available } = req.query;
@@ -9,7 +9,7 @@ exports.getMenu = async (req, res) => {
     let params = [];
     let i = 1;
 
-    if (category_id) { conditions.push(`m.category_id = $${i++}`);    params.push(category_id); }
+    if (category_id) { conditions.push(`m.category_id = $${i++}`); params.push(category_id); }
     if (featured === 'true') { conditions.push(`m.is_featured = TRUE`); }
     if (available !== 'false') { conditions.push(`m.is_available = TRUE`); }
     if (search) {
@@ -28,7 +28,7 @@ exports.getMenu = async (req, res) => {
        LEFT JOIN categories c ON c.id = m.category_id
        LEFT JOIN item_modifiers im ON im.item_id = m.id
        ${where}
-       GROUP BY m.id, c.name, c.icon
+       GROUP BY m.id, c.name, c.icon, c.sort_order  -- এখানে c.sort_order যোগ করা হয়েছে
        ORDER BY c.sort_order, m.name`,
       params
     );

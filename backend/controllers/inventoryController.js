@@ -32,7 +32,7 @@ exports.getLowStockAlerts = async (req, res) => {
   }
 };
 
-// ─── CREATE INGREDIENT ─────────────────────────────────────────
+// ─── CREATE INGREDIENT
 exports.createIngredient = async (req, res) => {
   const { name, unit, quantity = 0, threshold_alert = 0, cost_per_unit = 0, supplier } = req.body;
   if (!name || !unit) return res.status(400).json({ error: 'Name and unit required' });
